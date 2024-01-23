@@ -62,15 +62,62 @@ app.get('/mine', (req, res) => {
     const nounce = bitCoin.proofOfWork(previousBlockHash, currentBlockData);
     
     const hash = bitCoin.hashBlock(previousBlockHash, currentBlockData, nounce);
-
-    bitCoin.createNewTransaction(12.5, '00000000000000000000000000000000', nodeAddress);
     
     const newBlock = bitCoin.createNewBlock(nounce, previousBlockHash, hash);
-    
-    res.send({
-        note: 'New block mined successfully!',
-        block: newBlock,
+
+    const receiveNewBlockPromises = [];
+
+    bitCoin.networkNodes.forEach((networkNodeUrl) => {
+        const requestOptions = {
+            uri: networkNodeUrl + '/receive-new-block',
+            method: 'POST',
+            body: { newBlock: newBlock },
+            json: true
+        };
+
+        receiveNewBlockPromises.push(requestPromise(requestOptions));
     });
+
+    Promise.all(receiveNewBlockPromises).then(() => {
+        return requestPromise({
+            uri: bitCoin.currentNodeUrl + '/transaction/broadcast',
+            method: 'POST',
+            body: {
+                amount: 12.5,
+                sender: '00000000000000000000000000000000',
+                recipient: nodeAddress
+            },
+            json: true
+        });
+    }).then(() => {
+        res.send({
+            note: 'New block mined and broadcasted successfully!',
+            block: newBlock,
+        });
+    });
+});
+
+app.post('/receive-new-block', (req, res) => {
+    const newBlock = req.body.newBlock;
+    const lastBlock = bitCoin.getLastBlock();
+
+    const hasCorrectIndex = (lastBlock.index + 1) === newBlock.index;
+    const hasCorrectHash = lastBlock.hash === newBlock.previousBlockHash;
+
+    if(hasCorrectIndex && hasCorrectHash) {
+        bitCoin.chain.push(newBlock);
+        bitCoin.pendingTransactions = [];
+
+        res.json({
+            note: 'New block received and accepted!',
+            newBlock: newBlock
+        });
+    } else {
+        res.json({
+            note: 'New block rejected!',
+            newBlock: newBlock
+        });
+    }
 });
 
 app.post('/register-and-boradcast-node', (req, res) => {
