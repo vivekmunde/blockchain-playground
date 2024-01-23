@@ -51,49 +51,55 @@ app.post('/transaction/broadcast', (req, res) => {
 });
 
 app.get('/mine', (req, res) => {
-    const previousBlock = bitCoin.getLastBlock();
-    const previousBlockHash = previousBlock.hash;
+    if(bitCoin.pendingTransactions.length > 0) {
+        const previousBlock = bitCoin.getLastBlock();
+        const previousBlockHash = previousBlock.hash;
 
-    const currentBlockData = {
-        transactions: bitCoin.pendingTransactions,
-        index: previousBlock.index + 1,
-    };
-    
-    const nounce = bitCoin.proofOfWork(previousBlockHash, currentBlockData);
-    
-    const hash = bitCoin.hashBlock(previousBlockHash, currentBlockData, nounce);
-    
-    const newBlock = bitCoin.createNewBlock(nounce, previousBlockHash, hash);
-
-    const receiveNewBlockPromises = [];
-
-    bitCoin.networkNodes.forEach((networkNodeUrl) => {
-        const requestOptions = {
-            uri: networkNodeUrl + '/receive-new-block',
-            method: 'POST',
-            body: { newBlock: newBlock },
-            json: true
+        const currentBlockData = {
+            transactions: bitCoin.pendingTransactions,
+            index: previousBlock.index + 1,
         };
+        
+        const nounce = bitCoin.proofOfWork(previousBlockHash, currentBlockData);
+        
+        const hash = bitCoin.hashBlock(previousBlockHash, currentBlockData, nounce);
+        
+        const newBlock = bitCoin.createNewBlock(nounce, previousBlockHash, hash);
 
-        receiveNewBlockPromises.push(requestPromise(requestOptions));
-    });
+        const receiveNewBlockPromises = [];
 
-    Promise.all(receiveNewBlockPromises).then(() => {
-        return requestPromise({
-            uri: bitCoin.currentNodeUrl + '/transaction/broadcast',
-            method: 'POST',
-            body: {
-                amount: 12.5,
-                sender: '00000000000000000000000000000000',
-                recipient: nodeAddress
-            },
-            json: true
+        bitCoin.networkNodes.forEach((networkNodeUrl) => {
+            const requestOptions = {
+                uri: networkNodeUrl + '/receive-new-block',
+                method: 'POST',
+                body: { newBlock: newBlock },
+                json: true
+            };
+
+            receiveNewBlockPromises.push(requestPromise(requestOptions));
         });
-    }).then(() => {
-        res.send({
-            note: 'New block mined and broadcasted successfully!',
-            block: newBlock,
+
+        Promise.all(receiveNewBlockPromises).then(() => {
+            return requestPromise({
+                uri: bitCoin.currentNodeUrl + '/transaction/broadcast',
+                method: 'POST',
+                body: {
+                    amount: 12.5,
+                    sender: '00000000000000000000000000000000',
+                    recipient: nodeAddress
+                },
+                json: true
+            });
+        }).then(() => {
+            res.send({
+                note: 'New block mined and broadcasted successfully!',
+                block: newBlock,
+            });
         });
+    }
+
+    res.send({
+        note: 'No pending transactions to mine!'
     });
 });
 
@@ -123,37 +129,43 @@ app.post('/receive-new-block', (req, res) => {
 app.post('/register-and-boradcast-node', (req, res) => {
     const newNodeUrl = req.body.newNodeUrl;
 
-    if(bitCoin.networkNodes.indexOf(newNodeUrl) === -1) {
-        bitCoin.networkNodes.push(newNodeUrl);
-    }
+    if(bitCoin.currentNodeUrl !== newNodeUrl) {
+        if(bitCoin.networkNodes.indexOf(newNodeUrl) === -1) {
+            bitCoin.networkNodes.push(newNodeUrl);
+        }
 
-    const registerNodesPromises = [];
+        const registerNodesPromises = [];
 
-    bitCoin.networkNodes.forEach((networkNodeUrl) => {
-        const requestOptions = {
-           uri: networkNodeUrl + '/register-node',
-           method: 'POST',
-           body: { newNodeUrl: newNodeUrl },
-           json: true
-        };
-
-        registerNodesPromises.push(requestPromise(requestOptions));
-    });
-
-    Promise.all(registerNodesPromises).then((response) => {
-        const bulkRegisterOptions = {
-            uri: newNodeUrl + '/register-nodes-bulk',
+        bitCoin.networkNodes.forEach((networkNodeUrl) => {
+            const requestOptions = {
+            uri: networkNodeUrl + '/register-node',
             method: 'POST',
-            body: { allNetworkNodes: [...bitCoin.networkNodes, bitCoin.currentNodeUrl] },
+            body: { newNodeUrl: newNodeUrl },
             json: true
-        };
+            };
 
-        return requestPromise(bulkRegisterOptions);
-    }).then((response) => {
-        res.json({
-            note: 'New node registered successfully with network!'
+            registerNodesPromises.push(requestPromise(requestOptions));
         });
-    });
+
+        Promise.all(registerNodesPromises).then((response) => {
+            const bulkRegisterOptions = {
+                uri: newNodeUrl + '/register-nodes-bulk',
+                method: 'POST',
+                body: { allNetworkNodes: [...bitCoin.networkNodes, bitCoin.currentNodeUrl] },
+                json: true
+            };
+
+            return requestPromise(bulkRegisterOptions);
+        }).then((response) => {
+            res.json({
+                note: 'New node registered successfully with network!'
+            });
+        });
+    } else {
+        res.json({
+            note: 'Cannot registered myself with network!'
+        });
+    }
 });
 
 app.post('/register-node', (req, res) => {
@@ -173,6 +185,31 @@ app.post('/register-nodes-bulk', (req, res) => {
 
     res.json({
         note: 'Nodes bulk registered sucessfully!'
+    });
+});
+
+app.post('/register-and-broadcast-all-nodes', (req, res) => {
+    const options = {
+        uri: bitCoin.currentNodeUrl + '/register-and-boradcast-node',
+        method: 'POST',
+        body: { newNodeUrl: 'http://localhost:3001' },
+        json: true
+    };
+
+    requestPromise(options).then(() => {
+        options.body.newNodeUrl = 'http://localhost:3002';
+        return requestPromise(options);
+    }).then(() => {
+        options.body.newNodeUrl = 'http://localhost:3003';
+        return requestPromise(options);
+    }).then(() => {
+        options.body.newNodeUrl = 'http://localhost:3004';
+        return requestPromise(options);
+    }).then(() => {
+        options.body.newNodeUrl = 'http://localhost:3005';
+        return requestPromise(options);
+    }).then(() => {
+        res.json({ note: 'Nodes synchronised successfully!' });
     });
 });
 
