@@ -70,4 +70,41 @@ Blockchain.prototype.proofOfWork = function(previousBlockHash, currentBlockData)
   return nounce;
 }
 
+Blockchain.prototype.chainIsValid = function(blockchainToValidate) {
+  let chainIsValid = true;
+
+  for(let i = 1; i < blockchainToValidate.length; i++) {
+    const currentBlock = blockchainToValidate[i];
+    const previousBlock = blockchainToValidate[i - 1];
+
+    const currentBlockHash = this.hashBlock(
+      previousBlock.hash,
+      {
+        transactions: currentBlock.transactions,
+        index: currentBlock.index,
+      },
+      currentBlock.nounce,
+    );
+
+    if(currentBlock.previousBlockHash !== previousBlock.hash
+      || currentBlockHash.substring(0, 4) !== '0000'
+      || currentBlockHash !== currentBlock.hash) {
+      chainIsValid = false;
+      break;
+    }
+  }
+
+  const genesisBlock = blockchainToValidate[0];
+
+  if(genesisBlock.index !== 1
+    || genesisBlock.hash !== '0000000000000000000000000000000000000000000000000000000000000000'
+    || genesisBlock.previousBlockHash !== '0000000000000000000000000000000000000000000000000000000000000000'
+    || genesisBlock.nounce !== 0
+    || genesisBlock.transactions.length !== 0) {
+      chainIsValid = false;
+    }
+
+  return chainIsValid;
+};
+
 module.exports = Blockchain;

@@ -96,11 +96,11 @@ app.get('/mine', (req, res) => {
                 block: newBlock,
             });
         });
+    } else {
+        res.send({
+            note: 'No pending transactions to mine!'
+        });
     }
-
-    res.send({
-        note: 'No pending transactions to mine!'
-    });
 });
 
 app.post('/receive-new-block', (req, res) => {
