@@ -206,10 +206,51 @@ app.post('/register-and-broadcast-all-nodes', (req, res) => {
         options.body.newNodeUrl = 'http://localhost:3004';
         return requestPromise(options);
     }).then(() => {
-        options.body.newNodeUrl = 'http://localhost:3005';
-        return requestPromise(options);
-    }).then(() => {
         res.json({ note: 'Nodes synchronised successfully!' });
+    });
+});
+
+app.get('/consensus', (req, res) => {
+    const blockchainPromises = [];
+
+    bitCoin.networkNodes.forEach((networkNodeUrl) => {
+        const options = {
+            uri: networkNodeUrl + '/blockchain',
+            method: 'GET',
+            json: true
+        };
+
+        blockchainPromises.push(requestPromise(options));
+    });
+
+    Promise.all(blockchainPromises).then((blockchains) => {
+        const currentChainLength = bitCoin.chain.length;
+        let maxChainLength = currentChainLength;
+        let newLongestChain = undefined;
+        let newPendingTransactions = undefined;
+
+        blockchains.forEach((blockchain) => {
+            if(blockchain.chain.length > currentChainLength) {
+                maxChainLength = blockchain.chain.length;
+                newLongestChain = blockchain.chain;
+                newPendingTransactions = blockchain.pendingTransactions;
+            }
+        });
+
+        if(newLongestChain && bitCoin.chainIsValid(newLongestChain)) {
+            bitCoin.chain = newLongestChain;
+            bitCoin.pendingTransactions = newPendingTransactions;
+
+            res.json({
+                note: 'Chain has been replaced.',
+                chain: bitCoin.chain
+            });
+        } else {
+            res.json({
+                note: 'Chain has not been replaced.',
+                chain: bitCoin.chain
+            });
+        }
     });
 });
 
